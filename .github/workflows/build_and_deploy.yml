@@ -19,14 +19,18 @@ env:
   #
   # See https://doc.rust-lang.org/rustc/platform-support/apple-darwin.html#os-version for more details
   MACOSX_DEPLOYMENT_TARGET: 11.0
-  # This will become "true" if the latest commit is
-  # "Version Packages" or "Version Pacakges \((canary|rc)\)"
+  # This will become "true" if the latest commit (merged release PR) is either:
+  # - "Version Packages (#<number>)"
+  # - "Version Pacakges (canary/rc) (#<number>)"
   # set from scripts/check-is-release.js
   __NEW_RELEASE: 'false'
 
 jobs:
   deploy-target:
     runs-on: ubuntu-latest
+    # Don't trigger this job on `pull_request` events from upstream branches.
+    # Those would already run this job on the `push` event
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork }}
     outputs:
       value: ${{ steps.deploy-target.outputs.value }}
     steps:
@@ -50,10 +54,11 @@ jobs:
         run: |
           # TODO: Remove the new release check once the new release workflow is fully replaced.
           RELEASE_CHECK=$(node ./scripts/check-is-release.js 2> /dev/null || :)
-          if [[ $RELEASE_CHECK =~ ^Version\ Packages(\ \((canary|rc)\))?$ ]];
+          if [[ $RELEASE_CHECK == 'new-release' ]];
           then
             echo "__NEW_RELEASE=true" >> $GITHUB_ENV
-          elif [[ $RELEASE_CHECK = v* ]];
+            echo "value=production" >> $GITHUB_OUTPUT
+          elif [[ $RELEASE_CHECK == v* ]];
           then
             echo "value=production" >> $GITHUB_OUTPUT
           elif [ '${{ github.ref }}' == 'refs/heads/canary' ]
@@ -530,7 +535,7 @@ jobs:
           path: crates/wasm
 
       - name: Create tarballs
-        run: GH_PR_NUMBER=${{ github.event.pull_request && github.event.pull_request.number || '' }} node scripts/create-preview-tarballs.js "${{ github.sha }}" "${{ runner.temp }}/preview-tarballs"
+        run: node scripts/create-preview-tarballs.js "${{ github.sha }}" "${{ github.workflow_sha }}" "${{ runner.temp }}/preview-tarballs"
 
       - name: Upload tarballs
         uses: actions/upload-artifact@v4
@@ -604,6 +609,7 @@ jobs:
       # New release process
       - name: Publish to NPM
         id: changesets
+        # TODO: Change to IS_RELEASE condition when new release becomes stable.
         if: ${{ env.__NEW_RELEASE == 'true' }}
         uses: changesets/action@v1
         with:
@@ -611,16 +617,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_BOT_GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN_ELEVATED }}
-          RELEASE_TYPE: ${{ github.event.inputs.releaseType }}
-
-      # Add label to verify the PR is created from this workflow.
-      - name: Add label to PR
-        if: steps.changesets.outputs.pullRequestNumber
-        run: 'gh pr edit ${{ steps.changesets.outputs.pullRequestNumber }} --add-label "created-by: CI"'
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Send a Slack notification of the publish status
+        # TODO: Change to IS_RELEASE condition when new release becomes stable.
+        if: ${{ env.__NEW_RELEASE == 'true' && (steps.changesets.outputs.published == 'true' || steps.changesets.outputs.published == 'false') }}
         run: pnpm tsx scripts/release/slack.ts
         env:
           SLACK_TOKEN: ${{ secrets.SLACK_TOKEN }}
@@ -696,7 +696,7 @@ jobs:
 
   buildPassed:
     needs: ['deploy-target', 'build', 'build-wasm', 'build-native']
-    if: always()
+    if: ${{ always() && needs.deploy-target.outputs.value != '' }}
     name: thank you, build
     runs-on: ubuntu-latest
     steps:

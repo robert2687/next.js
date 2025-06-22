@@ -2579,6 +2579,13 @@ export async function next_compile(task, opts) {
       'nextbuildstatic',
       'nextbuildstatic_esm',
       'nextbuild_esm',
+      'next_devtools_entrypoint',
+      'next_devtools_server',
+      'next_devtools_server_esm',
+      'next_devtools_shared',
+      'next_devtools_shared_esm',
+      'next_devtools_userspace',
+      'next_devtools_userspace_esm',
       'pages',
       'pages_esm',
       'lib',
@@ -2720,6 +2727,67 @@ export async function client_esm(task, opts) {
     .target('dist/esm/client')
 }
 
+export async function next_devtools_entrypoint(task, opts) {
+  await task
+    .source('src/next-devtools/dev-overlay.shim.ts')
+    .swc('client', { dev: opts.dev, interopClientDefaultExport: true })
+    .target('dist/next-devtools')
+}
+
+export async function next_devtools_server(task, opts) {
+  await task
+    .source(
+      'src/next-devtools/server/**/!(*.test|*.stories).+(js|ts|tsx|woff2)'
+    )
+    .swc('client', { dev: opts.dev, interopClientDefaultExport: true })
+    .target('dist/next-devtools/server')
+}
+
+export async function next_devtools_server_esm(task, opts) {
+  await task
+    .source(
+      'src/next-devtools/server/**/!(*.test|*.stories).+(js|ts|tsx|woff2)'
+    )
+    .swc('client', { dev: opts.dev, esm: true })
+    .target('dist/esm/next-devtools/server')
+}
+
+export async function next_devtools_shared(task, opts) {
+  await task
+    .source(
+      'src/next-devtools/shared/**/!(*.test|*.stories).+(js|ts|tsx|woff2)'
+    )
+    .swc('client', { dev: opts.dev, interopClientDefaultExport: true })
+    .target('dist/next-devtools/shared')
+}
+
+export async function next_devtools_shared_esm(task, opts) {
+  await task
+    .source(
+      'src/next-devtools/shared/**/!(*.test|*.stories).+(js|ts|tsx|woff2)'
+    )
+    .swc('client', { dev: opts.dev, esm: true })
+    .target('dist/esm/next-devtools/shared')
+}
+
+export async function next_devtools_userspace(task, opts) {
+  await task
+    .source(
+      'src/next-devtools/userspace/**/!(*.test|*.stories).+(js|ts|tsx|woff2)'
+    )
+    .swc('client', { dev: opts.dev, interopClientDefaultExport: true })
+    .target('dist/next-devtools/userspace')
+}
+
+export async function next_devtools_userspace_esm(task, opts) {
+  await task
+    .source(
+      'src/next-devtools/userspace/**/!(*.test|*.stories).+(js|ts|tsx|woff2)'
+    )
+    .swc('client', { dev: opts.dev, esm: true })
+    .target('dist/esm/next-devtools/userspace')
+}
+
 // export is a reserved keyword for functions
 export async function nextbuildstatic(task, opts) {
   await task
@@ -2835,9 +2903,21 @@ export async function build(task, opts) {
 }
 
 export async function generate_types(task, opts) {
-  await execa.command('pnpm run types', {
-    stdio: 'inherit',
-  })
+  const watchmode = opts.dev
+  const typesPromise = execa(
+    'pnpm',
+    [
+      'run',
+      'types',
+      ...(watchmode ? ['--watch', '--preserveWatchOutput'] : []),
+    ],
+    { stdio: 'inherit' }
+  )
+  // In watch-mode the process never completes i.e. the Promise never resolve.
+  // But taskr needs to know that it can start watching the files for the task it has to manually restart.
+  if (!watchmode) {
+    await typesPromise
+  }
 }
 
 export async function check_error_codes(task, opts) {
@@ -2870,6 +2950,19 @@ export default async function (task) {
   await task.watch(
     'src/build',
     ['nextbuild', 'nextbuild_esm', 'nextbuildjest'],
+    opts
+  )
+  await task.watch(
+    'src/next-devtools',
+    [
+      'next_devtools_entrypoint',
+      'next_devtools_server',
+      'next_devtools_server_esm',
+      'next_devtools_shared',
+      'next_devtools_shared_esm',
+      'next_devtools_userspace',
+      'next_devtools_userspace_esm',
+    ],
     opts
   )
   await task.watch('src/experimental/testing', 'experimental_testing', opts)
@@ -3120,6 +3213,16 @@ export async function next_bundle_server(task, opts) {
   })
 }
 
+export async function next_bundle_devtools(task, opts) {
+  await task.source('dist').webpack({
+    watch: opts.dev,
+    config: require('./next-devtools.webpack-config')({
+      dev: opts.dev,
+    }),
+    name: 'next-bundle-devtools-dev',
+  })
+}
+
 export async function next_bundle(task, opts) {
   await task.parallel(
     [
@@ -3140,6 +3243,8 @@ export async function next_bundle(task, opts) {
       'next_bundle_pages_dev_turbo',
       // builds the minimal server
       'next_bundle_server',
+      // devtools
+      'next_bundle_devtools',
     ],
     opts
   )

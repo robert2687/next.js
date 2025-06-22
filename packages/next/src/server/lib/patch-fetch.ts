@@ -246,7 +246,8 @@ export function createPatchedFetcher(
         }
         // RequestInit doesn't keep extra fields e.g. next so it's
         // only available if init is used separate
-        let currentFetchRevalidate = getNextField('revalidate')
+        const originalFetchRevalidate = getNextField('revalidate')
+        let currentFetchRevalidate = originalFetchRevalidate
         const tags: string[] = validateTags(
           getNextField('tags') || [],
           `fetch ${input.toString()}`
@@ -339,11 +340,8 @@ export function createPatchedFetcher(
         ) {
           currentFetchRevalidate = false
         } else if (
-          // if we are inside of "use cache"/"unstable_cache"
-          // we shouldn't set the revalidate to 0 as it's overridden
-          // by the cache context
-          workUnitStore?.type !== 'cache' &&
-          (hasExplicitFetchCacheOptOut || noFetchConfigAndForceDynamic)
+          hasExplicitFetchCacheOptOut ||
+          noFetchConfigAndForceDynamic
         ) {
           currentFetchRevalidate = 0
         }
@@ -393,16 +391,24 @@ export function createPatchedFetcher(
             currentFetchCacheConfig === 'default') &&
           // eslint-disable-next-line eqeqeq
           currentFetchRevalidate == undefined
-        const autoNoCache =
-          // this condition is hit for null/undefined
-          // eslint-disable-next-line eqeqeq
-          (hasNoExplicitCacheConfig &&
-            // we disable automatic no caching behavior during build time SSG so that we can still
-            // leverage the fetch cache between SSG workers
-            !workStore.isPrerendering) ||
-          ((hasUnCacheableHeader || isUnCacheableMethod) &&
-            revalidateStore &&
-            revalidateStore.revalidate === 0)
+
+        let autoNoCache = Boolean(
+          (hasUnCacheableHeader || isUnCacheableMethod) &&
+            revalidateStore?.revalidate === 0
+        )
+
+        let isImplicitBuildTimeCache = false
+
+        if (!autoNoCache && hasNoExplicitCacheConfig) {
+          // We don't enable automatic no-cache behavior during build-time
+          // prerendering so that we can still leverage the fetch cache between
+          // export workers.
+          if (workStore.isBuildTimePrerendering) {
+            isImplicitBuildTimeCache = true
+          } else {
+            autoNoCache = true
+          }
+        }
 
         if (
           hasNoExplicitCacheConfig &&
@@ -531,8 +537,9 @@ export function createPatchedFetcher(
           }
 
           // We only want to set the revalidate store's revalidate time if it
-          // was explicitly set for the fetch call, i.e. currentFetchRevalidate.
-          if (revalidateStore && currentFetchRevalidate === finalRevalidate) {
+          // was explicitly set for the fetch call, i.e.
+          // originalFetchRevalidate.
+          if (revalidateStore && originalFetchRevalidate === finalRevalidate) {
             revalidateStore.revalidate = finalRevalidate
           }
         }
@@ -566,7 +573,7 @@ export function createPatchedFetcher(
         const fetchIdx = workStore.nextFetchId ?? 1
         workStore.nextFetchId = fetchIdx + 1
 
-        let handleUnlock = () => Promise.resolve()
+        let handleUnlock: () => Promise<void> | void = () => {}
 
         const doOriginalFetch = async (
           isStale?: boolean,
@@ -671,7 +678,13 @@ export function createPatchedFetcher(
                       data: fetchedData,
                       revalidate: normalizedRevalidate,
                     },
-                    { fetchCache: true, fetchUrl, fetchIdx, tags }
+                    {
+                      fetchCache: true,
+                      fetchUrl,
+                      fetchIdx,
+                      tags,
+                      isImplicitBuildTimeCache,
+                    }
                   )
                   await handleUnlock()
 
@@ -717,7 +730,13 @@ export function createPatchedFetcher(
                             data: fetchedData,
                             revalidate: normalizedRevalidate,
                           },
-                          { fetchCache: true, fetchUrl, fetchIdx, tags }
+                          {
+                            fetchCache: true,
+                            fetchUrl,
+                            fetchIdx,
+                            tags,
+                            isImplicitBuildTimeCache,
+                          }
                         )
                       }
                     })

@@ -12,8 +12,6 @@ import {
 } from 'next-test-utils'
 import stripAnsi from 'strip-ansi'
 
-const isRspack = process.env.NEXT_RSPACK !== undefined
-
 const appDir = join(__dirname, '../')
 const gspPage = join(appDir, 'pages/gsp.js')
 const gsspPage = join(appDir, 'pages/gssp.js')
@@ -51,6 +49,8 @@ describe('server-side dev errors', () => {
   function stripInternalHandler(output) {
     return output
       .replace(/.*at async handler .*next-route-loader.*/, '')
+      .replace(/.*at async handleResponse.*/, '')
+      .replace(/.*at async doRender \(.*/, '')
       .split(/\n/)
       .filter((item) => !!item.trim())
       .join('\n')
@@ -369,7 +369,7 @@ describe('server-side dev errors', () => {
       )
       .trim()
     // FIXME(veil): error repeated
-    if (isTurbopack || isRspack) {
+    if (isTurbopack) {
       expect(stderrOutput).toMatchInlineSnapshot(`
         "Error: catch this rejection
             at Timeout._onTimeout (../../test/integration/server-side-dev-errors/pages/uncaught-rejection.js:7:19)
@@ -448,7 +448,7 @@ describe('server-side dev errors', () => {
       )
       .trim()
     // FIXME(veil): error repeated
-    if (isTurbopack || isRspack) {
+    if (isTurbopack) {
       expect(stderrOutput).toMatchInlineSnapshot(`
        "Error: 
            at Timeout._onTimeout (../../test/integration/server-side-dev-errors/pages/uncaught-empty-rejection.js:7:19)
@@ -526,7 +526,7 @@ describe('server-side dev errors', () => {
       )
       .trim()
     // FIXME(veil): error repeated
-    if (isTurbopack || isRspack) {
+    if (isTurbopack) {
       expect(stderrOutput).toMatchInlineSnapshot(`
         "Error: catch this exception
             at Timeout._onTimeout (../../test/integration/server-side-dev-errors/pages/uncaught-exception.js:7:10)
@@ -604,7 +604,7 @@ describe('server-side dev errors', () => {
       )
       .trim()
     // FIXME(veil): error repeated
-    if (isTurbopack || isRspack) {
+    if (isTurbopack) {
       expect(stderrOutput).toMatchInlineSnapshot(`
        "Error: 
            at Timeout._onTimeout (../../test/integration/server-side-dev-errors/pages/uncaught-empty-exception.js:7:10)

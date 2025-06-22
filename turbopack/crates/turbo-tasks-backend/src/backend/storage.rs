@@ -97,7 +97,8 @@ bitfield! {
     pub data_modified, set_data_modified: 3;
     /// Item was modified after snapshot mode was entered. A snapshot was taken.
     pub meta_snapshot, set_meta_snapshot: 4;
-    pub data_snapshot, set_data_snapshot: 4;
+    pub data_snapshot, set_data_snapshot: 5;
+    pub is_immutable, set_is_immutable: 6;
 }
 
 impl InnerStorageState {
@@ -137,7 +138,7 @@ pub struct InnerStorageSnapshot {
     aggregation_number: OptionStorage<AggregationNumber>,
     output_dependent: AutoMapStorage<TaskId, ()>,
     output: OptionStorage<OutputValue>,
-    upper: AutoMapStorage<TaskId, i32>,
+    upper: AutoMapStorage<TaskId, u32>,
     dynamic: DynamicStorage,
     pub meta_modified: bool,
     pub data_modified: bool,
@@ -205,7 +206,7 @@ pub struct InnerStorage {
     aggregation_number: OptionStorage<AggregationNumber>,
     output_dependent: AutoMapStorage<TaskId, ()>,
     output: OptionStorage<OutputValue>,
-    upper: AutoMapStorage<TaskId, i32>,
+    upper: AutoMapStorage<TaskId, u32>,
     dynamic: DynamicStorage,
     state: InnerStorageState,
 }
